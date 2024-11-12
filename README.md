@@ -1,4 +1,4 @@
-# chatbot
+# Chatbot
 Interactive NLP Chatbot with Wikipedia Integration and GUI in Python
 
 This project features an interactive chatbot that retrieves information from Wikipedia and responds to user queries. The bot processes input using Natural Language Processing (NLP) techniques like tokenization and stopword filtering, while providing real-time responses via a graphical user interface (GUI) built with Tkinter. It also supports multilingual capabilities by integrating translation services, enabling it to handle queries in various languages.
