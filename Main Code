@@ -1,0 +1,131 @@
+# Install necessary packages first
+
+pip install nltk
+pip install wikipedia-api==0.5.4
+pip install --upgrade googletrans==4.0.0-rc1
+pip install SpeechRecognition
+pip install pyttsx3
+%gui tk
+
+import tkinter as tk
+from tkinter import scrolledtext
+import wikipediaapi
+import nltk
+from nltk.tokenize import word_tokenize
+from nltk.corpus import stopwords
+from googletrans import Translator
+import speech_recognition as sr
+import pyttsx3
+
+# Ensure you have the necessary NLTK resources
+nltk.download('punkt')
+nltk.download('stopwords')
+
+# Initialize the translator and TTS engine
+translator = Translator()
+engine = pyttsx3.init()
+
+# Greetings dictionary
+greetings = {
+    "hi": "Hello!",
+    "hello": "Hi!",
+    "hey": "Hey!",
+    "how are you": "I'm doing well, thanks for asking!",
+    "how are you?": "I'm doing well, thanks for asking!",
+}
+
+def respond_to_greeting(user_input):
+    user_input = user_input.lower().strip()
+    return greetings.get(user_input, None)
+
+# Maintain conversation context
+conversation_history = []
+
+def speak(text):
+    engine.say(text)
+    engine.runAndWait()
+
+# Function to process user input and fetch data from Wikipedia API
+def get_wikipedia_data():
+    user_input = input_field.get("1.0", "end-1c")
+    
+    # Check for greetings first
+    response = respond_to_greeting(user_input)
+    if response:
+        output_field.delete("1.0", tk.END)
+        output_field.insert(tk.END, response)
+        speak(response)
+        return  # Exit the function if a greeting was found
+
+    # Translate user input to English
+    translated_input = translator.translate(user_input, dest='en').text
+    conversation_history.append(translated_input)
+
+    # Tokenize the input and filter out stopwords
+    tokens = word_tokenize(translated_input)
+    filtered_tokens = [word for word in tokens if word.lower() not in stopwords.words('english')]
+    
+    # Join the filtered tokens back into a string for querying
+    query = ' '.join(filtered_tokens)
+    
+    # Create a Wikipedia API object
+    wiki_wiki = wikipediaapi.Wikipedia('en')
+    
+    # Fetch data from Wikipedia
+    page = wiki_wiki.page(query)
+    if page.exists():
+        output = page.summary[0:500]  # Display first 500 characters
+        output_field.delete("1.0", tk.END)
+        output_field.insert(tk.END, output)
+        speak(output)
+    else:
+        output_field.delete("1.0", tk.END)
+        output_field.insert(tk.END, "No results found. Please try again.")
+        speak("No results found. Please try again.")
+
+# Function to handle voice input
+def voice_input():
+    recognizer = sr.Recognizer()
+    with sr.Microphone() as source:
+        print("Listening...")
+        audio = recognizer.listen(source)
+        try:
+            user_input = recognizer.recognize_google(audio)
+            input_field.delete("1.0", tk.END)
+            input_field.insert(tk.END, user_input)
+            get_wikipedia_data()
+        except sr.UnknownValueError:
+            output_field.delete("1.0", tk.END)
+            output_field.insert(tk.END, "Sorry, I did not understand that.")
+            speak("Sorry, I did not understand that.")
+        except sr.RequestError:
+            output_field.delete("1.0", tk.END)
+            output_field.insert(tk.END, "Could not request results from Google Speech Recognition service.")
+            speak("Could not request results from Google Speech Recognition service.")
+
+# Create the main application window
+root = tk.Tk()
+root.title("Multilingual Chatbot with NLP")
+
+# Create a label and input field for user input
+input_label = tk.Label(root, text="Enter your question or use voice input:")
+input_label.pack(pady=10)
+input_field = scrolledtext.ScrolledText(root, width=50, height=5)
+input_field.pack(pady=10)
+
+# Create a button to fetch data from Wikipedia API
+fetch_button = tk.Button(root, text="Get Answer", command=get_wikipedia_data)
+fetch_button.pack(pady=10)
+
+# Create a button for voice input
+voice_button = tk.Button(root, text="Voice Input", command=voice_input)
+voice_button.pack(pady=10)
+
+# Create a label and output field for displaying results
+output_label = tk.Label(root, text="Answer:")
+output_label.pack(pady=10)
+output_field = scrolledtext.ScrolledText(root, width=50, height=10)
+output_field.pack(pady=10)
+
+# Start the Tkinter event loop
+root.mainloop()
