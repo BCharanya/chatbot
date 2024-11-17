@@ -5,6 +5,12 @@ pip install wikipedia-api==0.5.4
 pip install --upgrade googletrans==4.0.0-rc1
 pip install SpeechRecognition
 pip install pyttsx3
+!pip install genism
+!pip install numpy
+!pip install spacy==3.2.3
+!pip install transformers
+!pip install torch
+
 %gui tk
 
 import tkinter as tk
@@ -16,6 +22,13 @@ from nltk.corpus import stopwords
 from googletrans import Translator
 import speech_recognition as sr
 import pyttsx3
+import numpy
+
+from nltk.corpus import stopwords 
+from nltk.tokenize import word_tokenize, sent_tokenize
+
+import torch                
+from transformers import AutoTokenizer, AutoModelWithLMHead
 
 # Ensure you have the necessary NLTK resources
 nltk.download('punkt')
@@ -25,18 +38,24 @@ nltk.download('stopwords')
 translator = Translator()
 engine = pyttsx3.init()
 
-# Greetings dictionary
-greetings = {
+def respond_to_greeting(user_input):
+    greetings = {
+    
     "hi": "Hello!",
     "hello": "Hi!",
     "hey": "Hey!",
     "how are you": "I'm doing well, thanks for asking!",
-    "how are you?": "I'm doing well, thanks for asking!",
-}
+    "how are you?": "I'm doing well, thanks for asking!"
+    }
 
-def respond_to_greeting(user_input):
     user_input = user_input.lower().strip()
-    return greetings.get(user_input, None)
+    if user_input in greetings:
+        output_field.delete("1.0", tk.END)
+        output_field.insert(tk.END, greetings.get(user_input))
+        return True
+    else:
+        return False
+    
 
 # Maintain conversation context
 conversation_history = []
@@ -52,10 +71,7 @@ def get_wikipedia_data():
     # Check for greetings first
     response = respond_to_greeting(user_input)
     if response:
-        output_field.delete("1.0", tk.END)
-        output_field.insert(tk.END, response)
-        speak(response)
-        return  # Exit the function if a greeting was found
+        return
 
     # Translate user input to English
     translated_input = translator.translate(user_input, dest='en').text
@@ -63,10 +79,14 @@ def get_wikipedia_data():
 
     # Tokenize the input and filter out stopwords
     tokens = word_tokenize(translated_input)
-    filtered_tokens = [word for word in tokens if word.lower() not in stopwords.words('english')]
-    
+    filtered_tokens = [word for word in tokens if word.lower() not in stopwords.words('english')     
+        
     # Join the filtered tokens back into a string for querying
+    
     query = ' '.join(filtered_tokens)
+    
+    query=query.lower()
+    query = ''.join(letter for letter in query if( letter.isalnum() or letter==' '))
     
     # Create a Wikipedia API object
     wiki_wiki = wikipediaapi.Wikipedia('en')
@@ -74,14 +94,25 @@ def get_wikipedia_data():
     # Fetch data from Wikipedia
     page = wiki_wiki.page(query)
     if page.exists():
-        output = page.summary[0:500]  # Display first 500 characters
+        output = page.text
+        tokenizer = AutoTokenizer.from_pretrained('t5-base')                        
+        model = AutoModelWithLMHead.from_pretrained('t5-base', return_dict=True)       
+
+        inputs = tokenizer.encode("summarize: " + output,return_tensors='pt',max_length=512,truncation=True)       
+
+        summary_ids = model.generate(inputs, max_length=150, min_length=80, length_penalty=5., num_beams=2)    
+
+        summary = tokenizer.decode(summary_ids[0])
+        summary=summary[5:len(summary)-4]
         output_field.delete("1.0", tk.END)
-        output_field.insert(tk.END, output)
-        speak(output)
+        output_field.insert(tk.END,summary)
+    
+    
+    
     else:
         output_field.delete("1.0", tk.END)
         output_field.insert(tk.END, "No results found. Please try again.")
-        speak("No results found. Please try again.")
+        
 
 # Function to handle voice input
 def voice_input():
@@ -129,3 +160,4 @@ output_field.pack(pady=10)
 
 # Start the Tkinter event loop
 root.mainloop()
+
