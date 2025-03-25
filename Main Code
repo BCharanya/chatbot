@@ -1,163 +1,127 @@
-# Install necessary packages first
+pip install wikipedia googletrans==4.0.0-rc1 transformers torch nltk speechrecognition pyttsx3
 
-pip install nltk
-pip install wikipedia-api==0.5.4
-pip install --upgrade googletrans==4.0.0-rc1
-pip install SpeechRecognition
-pip install pyttsx3
-!pip install genism
-!pip install numpy
-!pip install spacy==3.2.3
-!pip install transformers
-!pip install torch
-
-%gui tk
-
-import tkinter as tk
-from tkinter import scrolledtext
+import wikipedia
 import wikipediaapi
 import nltk
-from nltk.tokenize import word_tokenize
-from nltk.corpus import stopwords
-from googletrans import Translator
 import speech_recognition as sr
 import pyttsx3
-import numpy
+import tkinter as tk
+from tkinter import scrolledtext
+from googletrans import Translator
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+import torch
 
-from nltk.corpus import stopwords 
-from nltk.tokenize import word_tokenize, sent_tokenize
-
-import torch                
-from transformers import AutoTokenizer, AutoModelWithLMHead
-
-# Ensure you have the necessary NLTK resources
-nltk.download('punkt')
+# Download NLTK stopwords
 nltk.download('stopwords')
+nltk.download('punkt')
+from nltk.tokenize import word_tokenize
+from nltk.corpus import stopwords
 
-# Initialize the translator and TTS engine
+# Initialize Translator, Speech, and Wikipedia API
 translator = Translator()
+wiki_wiki = wikipediaapi.Wikipedia('en')
 engine = pyttsx3.init()
 
-def respond_to_greeting(user_input):
-    greetings = {
-    
-    "hi": "Hello!",
-    "hello": "Hi!",
-    "hey": "Hey!",
-    "how are you": "I'm doing well, thanks for asking!",
-    "how are you?": "I'm doing well, thanks for asking!"
-    }
+# Load T5 model once for faster performance
+tokenizer = AutoTokenizer.from_pretrained('t5-base')
+model = AutoModelForSeq2SeqLM.from_pretrained('t5-base')
 
-    user_input = user_input.lower().strip()
-    if user_input in greetings:
-        output_field.delete("1.0", tk.END)
-        output_field.insert(tk.END, greetings.get(user_input))
-        return True
-    else:
-        return False
-    
+# Speech recognition
+recognizer = sr.Recognizer()
 
-# Maintain conversation context
-conversation_history = []
-
-def speak(text):
+def text_to_speech(text):
+    """ Converts text to speech """
     engine.say(text)
     engine.runAndWait()
 
-# Function to process user input and fetch data from Wikipedia API
-def get_wikipedia_data():
-    user_input = input_field.get("1.0", "end-1c")
-    
-    # Check for greetings first
-    response = respond_to_greeting(user_input)
-    if response:
-        return
-
-    # Translate user input to English
-    translated_input = translator.translate(user_input, dest='en').text
-    conversation_history.append(translated_input)
-
-    # Tokenize the input and filter out stopwords
-    tokens = word_tokenize(translated_input)
-    filtered_tokens = [word for word in tokens if word.lower() not in stopwords.words('english')     
-        
-    # Join the filtered tokens back into a string for querying
-    
-    query = ' '.join(filtered_tokens)
-    
-    query=query.lower()
-    query = ''.join(letter for letter in query if( letter.isalnum() or letter==' '))
-    
-    # Create a Wikipedia API object
-    wiki_wiki = wikipediaapi.Wikipedia('en')
-    
-    # Fetch data from Wikipedia
-    page = wiki_wiki.page(query)
-    if page.exists():
-        output = page.text
-        tokenizer = AutoTokenizer.from_pretrained('t5-base')                        
-        model = AutoModelWithLMHead.from_pretrained('t5-base', return_dict=True)       
-
-        inputs = tokenizer.encode("summarize: " + output,return_tensors='pt',max_length=512,truncation=True)       
-
-        summary_ids = model.generate(inputs, max_length=150, min_length=80, length_penalty=5., num_beams=2)    
-
-        summary = tokenizer.decode(summary_ids[0])
-        summary=summary[5:len(summary)-4]
-        output_field.delete("1.0", tk.END)
-        output_field.insert(tk.END,summary)
-    
-    
-    
-    else:
-        output_field.delete("1.0", tk.END)
-        output_field.insert(tk.END, "No results found. Please try again.")
-        
-
-# Function to handle voice input
-def voice_input():
-    recognizer = sr.Recognizer()
+def speech_to_text():
+    """ Converts speech to text """
     with sr.Microphone() as source:
-        print("Listening...")
-        audio = recognizer.listen(source)
+        output_field.delete("1.0", tk.END)
+        output_field.insert(tk.END, "Listening...")
+        root.update()
         try:
+            audio = recognizer.listen(source)
             user_input = recognizer.recognize_google(audio)
             input_field.delete("1.0", tk.END)
             input_field.insert(tk.END, user_input)
-            get_wikipedia_data()
+            get_wikipedia_data()  # Automatically fetch data
         except sr.UnknownValueError:
             output_field.delete("1.0", tk.END)
-            output_field.insert(tk.END, "Sorry, I did not understand that.")
-            speak("Sorry, I did not understand that.")
+            output_field.insert(tk.END, "Sorry, I could not understand.")
         except sr.RequestError:
             output_field.delete("1.0", tk.END)
-            output_field.insert(tk.END, "Could not request results from Google Speech Recognition service.")
-            speak("Could not request results from Google Speech Recognition service.")
+            output_field.insert(tk.END, "Could not request results. Check internet.")
 
-# Create the main application window
+def get_wikipedia_data():
+    """ Fetches and summarizes Wikipedia data """
+    user_input = input_field.get("1.0", "end-1c").strip()
+
+    if not user_input:
+        output_field.delete("1.0", tk.END)
+        output_field.insert(tk.END, "Please enter a question.")
+        return
+
+    # Translate to English if needed
+    translated_input = translator.translate(user_input, dest='en').text
+
+    # Tokenize and filter stopwords
+    tokens = word_tokenize(translated_input)
+    filtered_tokens = [word for word in tokens if word.lower() not in stopwords.words('english')]
+    query = ' '.join(filtered_tokens).lower()
+    query = ''.join(letter for letter in query if letter.isalnum() or letter == ' ')
+
+    # Search Wikipedia for best match
+    search_results = wikipedia.search(query)
+    if not search_results:
+        output_field.delete("1.0", tk.END)
+        output_field.insert(tk.END, "No results found. Please try again.")
+        return
+
+    # Fetch summary
+    page_title = search_results[0]
+    try:
+        summary = wikipedia.summary(page_title, sentences=5)
+    except wikipedia.exceptions.DisambiguationError as e:
+        summary = f"Multiple results found: {', '.join(e.options[:5])}"
+    except wikipedia.exceptions.PageError:
+        output_field.delete("1.0", tk.END)
+        output_field.insert(tk.END, "No results found. Please try again.")
+        return
+
+    # Summarize using T5 model
+    inputs = tokenizer.encode("summarize: " + summary, return_tensors="pt", max_length=512, truncation=True)
+    summary_ids = model.generate(inputs, max_length=100, min_length=50, length_penalty=2.0, num_beams=4)
+    short_summary = tokenizer.decode(summary_ids[0], skip_special_tokens=True)
+
+    # Display output
+    output_field.delete("1.0", tk.END)
+    output_field.insert(tk.END, short_summary)
+
+    # Convert output to speech
+    text_to_speech(short_summary)
+
+# GUI Setup
 root = tk.Tk()
-root.title("Multilingual Chatbot with NLP")
+root.title("Multilingual Chatbot with Wikipedia & Speech Support")
 
-# Create a label and input field for user input
+# Input Box
 input_label = tk.Label(root, text="Enter your question or use voice input:")
-input_label.pack(pady=10)
-input_field = scrolledtext.ScrolledText(root, width=50, height=5)
-input_field.pack(pady=10)
+input_label.pack()
+input_field = scrolledtext.ScrolledText(root, height=2, wrap=tk.WORD)
+input_field.pack()
 
-# Create a button to fetch data from Wikipedia API
-fetch_button = tk.Button(root, text="Get Answer", command=get_wikipedia_data)
-fetch_button.pack(pady=10)
+# Buttons
+get_answer_btn = tk.Button(root, text="Get Answer", command=get_wikipedia_data)
+get_answer_btn.pack()
+voice_input_btn = tk.Button(root, text="Voice Input", command=speech_to_text)
+voice_input_btn.pack()
 
-# Create a button for voice input
-voice_button = tk.Button(root, text="Voice Input", command=voice_input)
-voice_button.pack(pady=10)
-
-# Create a label and output field for displaying results
+# Output Box
 output_label = tk.Label(root, text="Answer:")
-output_label.pack(pady=10)
-output_field = scrolledtext.ScrolledText(root, width=50, height=10)
-output_field.pack(pady=10)
+output_label.pack()
+output_field = scrolledtext.ScrolledText(root, height=5, wrap=tk.WORD)
+output_field.pack()
 
-# Start the Tkinter event loop
+# Run the GUI
 root.mainloop()
-
